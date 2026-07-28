@@ -1,9 +1,8 @@
 name: Exact GAP character-action search
 
 on:
-  push:
-    paths:
-      - '.github/workflows/gap-character-search.yml'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:

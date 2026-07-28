@@ -1,0 +1,188 @@
+name: Exact GAP p-group action search
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  pgroup-search:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - order: 128
+            first: 1
+            last: 300
+            prime: 2
+          - order: 128
+            first: 301
+            last: 600
+            prime: 2
+          - order: 128
+            first: 601
+            last: 900
+            prime: 2
+          - order: 128
+            first: 901
+            last: 1200
+            prime: 2
+          - order: 128
+            first: 1201
+            last: 1500
+            prime: 2
+          - order: 128
+            first: 1501
+            last: 1800
+            prime: 2
+          - order: 128
+            first: 1801
+            last: 2100
+            prime: 2
+          - order: 128
+            first: 2101
+            last: 2328
+            prime: 2
+          - order: 243
+            first: 1
+            last: 67
+            prime: 3
+          - order: 625
+            first: 1
+            last: 342
+            prime: 5
+          - order: 625
+            first: 343
+            last: 684
+            prime: 5
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      GROUP_ORDER: ${{ matrix.order }}
+      FIRST_ID: ${{ matrix.first }}
+      LAST_ID: ${{ matrix.last }}
+      GROUP_PRIME: ${{ matrix.prime }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GAP
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gap gap-smallgrp gap-character-tables
+      - name: Search exact coprime actions on p-groups
+        shell: bash
+        run: |
+          cat > /tmp/search.g <<GAP
+          LoadPackage("smallgrp");
+
+          ClassPosition := function(classes, x)
+            local j;
+            for j in [1..Length(classes)] do
+              if x in classes[j] then return j; fi;
+            od;
+            Error("class position not found");
+          end;
+
+          FixedSubgroupOfMaps := function(G, maps)
+            local fixed;
+            fixed := Filtered(Elements(G), g -> ForAll(maps, a -> Image(a,g)=g));
+            return Subgroup(G, fixed);
+          end;
+
+          TestMaps := function(G, maps, adesc, data)
+            local perms, inv, C, Cp, cclasses, cpos, good, rhs, i, chi;
+            perms := List(maps, a -> List(data.reps, r -> ClassPosition(data.classes,Image(a,r))));
+            inv := Filtered(data.irr,
+              chi -> ForAll(perms, perm -> ForAll([1..Length(perm)], i -> chi[i]=chi[perm[i]])));
+            C := FixedSubgroupOfMaps(G,maps);
+            Cp := DerivedSubgroup(C);
+            cclasses := ConjugacyClasses(C);
+            cpos := List(cclasses, cc -> ClassPosition(data.classes,Representative(cc)));
+            good := Filtered(inv, chi -> ForAll(cpos, i -> chi[i]<>0));
+            rhs := Index(C,Cp);
+            if Length(good)<>rhs then
+              Print("COUNTEREXAMPLE\n");
+              Print("G_ID=",IdGroup(G)," G_DESC=",StructureDescription(G)," G_ORDER=",Size(G),"\n");
+              Print("A_DESC=",adesc," AUT_ORDER=",Size(data.aut),"\n");
+              Print("G_GENERATORS=",GeneratorsOfGroup(G),"\n");
+              for i in [1..Length(maps)] do
+                Print("A_GEN ",i," ORDER=",Order(maps[i])," IMAGES=",List(GeneratorsOfGroup(G),g->Image(maps[i],g)),"\n");
+              od;
+              Print("C_ORDER=",Size(C)," C_DESC=",StructureDescription(C)," C_GENS=",GeneratorsOfGroup(C),"\n");
+              Print("CP_ORDER=",Size(Cp)," CP_GENS=",GeneratorsOfGroup(Cp)," RHS=",rhs,"\n");
+              Print("C_CLASS_REPS=",List(cclasses,Representative),"\n");
+              Print("C_TO_G_CLASS_POS=",cpos,"\n");
+              Print("INVARIANT_COUNT=",Length(inv)," GOOD_COUNT=",Length(good),"\n");
+              for i in [1..Length(inv)] do
+                chi:=inv[i];
+                Print("INVCHAR ",i," DEG=",chi[1]," CVALUES=",chi{cpos}," ALLVALUES=",chi," GOOD=",ForAll(cpos,j->chi[j]<>0),"\n");
+              od;
+              return true;
+            fi;
+            return false;
+          end;
+
+          SearchGroup := function(G,p)
+            local aut,pi,H,sclasses,sc,A,aclasses,ac,a,classes,data,checked;
+            aut := AutomorphismGroup(G);
+            classes := ConjugacyClasses(G);
+            data := rec(classes:=classes,reps:=List(classes,Representative),irr:=Irr(G),aut:=aut);
+            checked := 0;
+            pi := Difference(PrimeDivisors(Size(aut)),[p]);
+            if Length(pi)=0 then return [false,checked]; fi;
+            if IsSolvableGroup(aut) then
+              H := HallSubgroup(aut,pi);
+              if Size(H)<=100000 then
+                sclasses := ConjugacyClassesSubgroups(H);
+                for sc in sclasses do
+                  A := Representative(sc);
+                  if Size(A)>1 then
+                    checked := checked+1;
+                    if TestMaps(G,GeneratorsOfGroup(A),Concatenation("subgroup ",String(StructureDescription(A))," order ",String(Size(A))),data) then
+                      return [true,checked];
+                    fi;
+                  fi;
+                od;
+              else
+                aclasses := ConjugacyClasses(H);
+                for ac in aclasses do
+                  a := Representative(ac);
+                  if Order(a)>1 then
+                    checked:=checked+1;
+                    if TestMaps(G,[a],Concatenation("cyclic order ",String(Order(a))),data) then return [true,checked]; fi;
+                  fi;
+                od;
+              fi;
+            elif Size(aut)<=3000000 then
+              aclasses := ConjugacyClasses(aut);
+              for ac in aclasses do
+                a := Representative(ac);
+                if Order(a)>1 and Gcd(Order(a),Size(G))=1 then
+                  checked:=checked+1;
+                  if TestMaps(G,[a],Concatenation("cyclic order ",String(Order(a))),data) then return [true,checked]; fi;
+                fi;
+              od;
+            fi;
+            return [false,checked];
+          end;
+
+          n := $GROUP_ORDER;
+          firstid := $FIRST_ID;
+          stopid := $LAST_ID;
+          p := $GROUP_PRIME;
+          total := NumberSmallGroups(n);
+          if stopid>total then stopid:=total; fi;
+          Print("GAP_VERSION=",GAPInfo.Version," ORDER=",n," IDS=",firstid,"..",stopid," TOTAL=",total,"\n");
+          actions := 0;
+          for id in [firstid..stopid] do
+            G := SmallGroup(n,id);
+            if not IsAbelian(G) then
+              res := SearchGroup(G,p);
+              actions := actions + res[2];
+              if res[1] then QUIT_GAP(0); fi;
+            fi;
+            if id mod 25=0 then Print("PROGRESS ID=",id," ACTIONS=",actions,"\n"); fi;
+          od;
+          Print("NO_COUNTEREXAMPLE ORDER=",n," IDS=",firstid,"..",stopid," ACTIONS=",actions,"\n");
+          QUIT_GAP(0);
+          GAP
+          gap -q -b /tmp/search.g

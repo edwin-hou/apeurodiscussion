@@ -1,0 +1,38 @@
+name: Exact GAP character-action search
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gap-character-search.yml'
+  workflow_dispatch:
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GAP
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gap gap-smallgrp gap-character-tables
+      - name: Run exact sanity checks
+        shell: bash
+        run: |
+          cat > /tmp/search.g <<'GAP'
+          Print("GAP_VERSION=", GAPInfo.Version, "\n");
+          G := SymmetricGroup(3);
+          irr := Irr(G);
+          cls := ConjugacyClasses(G);
+          Print("S3_SIZE=", Size(G), " IRR=", Length(irr), " CLASSES=", Length(cls), "\n");
+          Print("FUNCTIONS PositionClass=", IsBoundGlobal("PositionClass"),
+                " RestrictedClassFunction=", IsBoundGlobal("RestrictedClassFunction"),
+                " AutomorphismGroup=", IsBoundGlobal("AutomorphismGroup"), "\n");
+          a := InnerAutomorphism(G, (1,2));
+          Print("AUT_IMAGE=", Image(a,(1,2,3)), "\n");
+          for i in [1..Length(irr)] do
+            Print("IRR ",i," DEG=",irr[i][1]," VALUES=",irr[i],"\n");
+          od;
+          QUIT;
+          GAP
+          gap -q /tmp/search.g

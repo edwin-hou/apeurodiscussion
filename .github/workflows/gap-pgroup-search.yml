@@ -166,14 +166,14 @@ jobs:
           end;
 
           n := $GROUP_ORDER;
-          first := $FIRST_ID;
-          last := $LAST_ID;
+          firstid := $FIRST_ID;
+          stopid := $LAST_ID;
           p := $GROUP_PRIME;
           total := NumberSmallGroups(n);
-          if last>total then last:=total; fi;
-          Print("GAP_VERSION=",GAPInfo.Version," ORDER=",n," IDS=",first,"..",last," TOTAL=",total,"\n");
+          if stopid>total then stopid:=total; fi;
+          Print("GAP_VERSION=",GAPInfo.Version," ORDER=",n," IDS=",firstid,"..",stopid," TOTAL=",total,"\n");
           actions := 0;
-          for id in [first..last] do
+          for id in [firstid..stopid] do
             G := SmallGroup(n,id);
             if not IsAbelian(G) then
               res := SearchGroup(G,p);
@@ -182,7 +182,7 @@ jobs:
             fi;
             if id mod 25=0 then Print("PROGRESS ID=",id," ACTIONS=",actions,"\n"); fi;
           od;
-          Print("NO_COUNTEREXAMPLE ORDER=",n," IDS=",first,"..",last," ACTIONS=",actions,"\n");
+          Print("NO_COUNTEREXAMPLE ORDER=",n," IDS=",firstid,"..",stopid," ACTIONS=",actions,"\n");
           QUIT_GAP(0);
           GAP
           gap -q -b /tmp/search.g

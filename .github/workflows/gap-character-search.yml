@@ -15,23 +15,94 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gap gap-smallgrp gap-character-tables
-      - name: Run exact sanity checks
+      - name: Run exact cyclic-action search
         shell: bash
         run: |
           cat > /tmp/search.g <<'GAP'
-          Print("GAP_VERSION=", GAPInfo.Version, "\n");
-          G := SymmetricGroup(3);
-          irr := Irr(G);
-          cls := ConjugacyClasses(G);
-          Print("S3_SIZE=", Size(G), " IRR=", Length(irr), " CLASSES=", Length(cls), "\n");
-          Print("FUNCTIONS PositionClass=", IsBoundGlobal("PositionClass"),
-                " RestrictedClassFunction=", IsBoundGlobal("RestrictedClassFunction"),
-                " AutomorphismGroup=", IsBoundGlobal("AutomorphismGroup"), "\n");
-          a := InnerAutomorphism(G, (1,2));
-          Print("AUT_IMAGE=", Image(a,(1,2,3)), "\n");
-          for i in [1..Length(irr)] do
-            Print("IRR ",i," DEG=",irr[i][1]," VALUES=",irr[i],"\n");
+          LoadPackage("smallgrp");
+
+          ClassPosition := function(classes, x)
+            local j;
+            for j in [1..Length(classes)] do
+              if x in classes[j] then return j; fi;
+            od;
+            Error("class position not found");
+          end;
+
+          FixedSubgroupOfMaps := function(G, maps)
+            local fixed;
+            fixed := Filtered(Elements(G), g -> ForAll(maps, a -> Image(a,g)=g));
+            return Subgroup(G, fixed);
+          end;
+
+          TestCyclicAction := function(G, a, data)
+            local ord, perm, inv, C, Cp, cclasses, cpos, good, rhs, i, chi;
+            ord := Order(a);
+            if ord=1 or Gcd(ord,Size(G))<>1 then return fail; fi;
+            perm := List(data.reps, r -> ClassPosition(data.classes,Image(a,r)));
+            inv := Filtered(data.irr,
+              chi -> ForAll([1..Length(perm)], i -> chi[i]=chi[perm[i]]));
+            C := FixedSubgroupOfMaps(G,[a]);
+            Cp := DerivedSubgroup(C);
+            cclasses := ConjugacyClasses(C);
+            cpos := List(cclasses, cc -> ClassPosition(data.classes,Representative(cc)));
+            good := Filtered(inv, chi -> ForAll(cpos, i -> chi[i]<>0));
+            rhs := Index(C,Cp);
+            if Length(good)<>rhs then
+              Print("COUNTEREXAMPLE\n");
+              Print("G_ID=",IdGroup(G)," G_DESC=",StructureDescription(G)," G_ORDER=",Size(G),"\n");
+              Print("AUT_ORDER=",ord," AUT_GROUP_ORDER=",Size(data.aut),"\n");
+              Print("G_GENERATORS=",GeneratorsOfGroup(G),"\n");
+              Print("AUT_IMAGES=",List(GeneratorsOfGroup(G),g->Image(a,g)),"\n");
+              Print("C_ORDER=",Size(C)," C_DESC=",StructureDescription(C)," C_GENS=",GeneratorsOfGroup(C),"\n");
+              Print("CP_ORDER=",Size(Cp)," CP_GENS=",GeneratorsOfGroup(Cp)," RHS=",rhs,"\n");
+              Print("C_CLASS_REPS=",List(cclasses,Representative),"\n");
+              Print("C_TO_G_CLASS_POS=",cpos,"\n");
+              Print("INVARIANT_COUNT=",Length(inv)," GOOD_COUNT=",Length(good),"\n");
+              for i in [1..Length(inv)] do
+                chi:=inv[i];
+                Print("INVCHAR ",i," DEG=",chi[1]," CVALUES=",chi{cpos}," ALLVALUES=",chi," GOOD=",ForAll(cpos,j->chi[j]<>0),"\n");
+              od;
+              return rec(G:=G,a:=a,C:=C,inv:=inv,good:=good,rhs:=rhs);
+            fi;
+            return fail;
+          end;
+
+          SearchOrder := function(n)
+            local ng,id,G,aut,aclasses,data,ac,a,res,checked;
+            ng := NumberSmallGroups(n);
+            checked := 0;
+            Print("ORDER_START ",n," GROUPS=",ng,"\n");
+            for id in [1..ng] do
+              G := SmallGroup(n,id);
+              if not IsAbelian(G) then
+                aut := AutomorphismGroup(G);
+                if Size(aut) <= 2000000 then
+                  aclasses := ConjugacyClasses(aut);
+                  data := rec(classes:=ConjugacyClasses(G), reps:=List(ConjugacyClasses(G),Representative),
+                              irr:=Irr(G), aut:=aut);
+                  for ac in aclasses do
+                    a := Representative(ac);
+                    if Order(a)>1 and Gcd(Order(a),n)=1 then
+                      checked := checked+1;
+                      res := TestCyclicAction(G,a,data);
+                      if res<>fail then return res; fi;
+                    fi;
+                  od;
+                fi;
+              fi;
+            od;
+            Print("ORDER_DONE ",n," ACTIONS=",checked,"\n");
+            return fail;
+          end;
+
+          Print("GAP_VERSION=",GAPInfo.Version,"\n");
+          for n in [1..127] do
+            if IsSmallGroupAvailable(n) then
+              if SearchOrder(n)<>fail then QUIT_GAP(0); fi;
+            fi;
           od;
-          QUIT;
+          Print("NO_COUNTEREXAMPLE_IN_RANGE\n");
+          QUIT_GAP(0);
           GAP
           gap -q /tmp/search.g

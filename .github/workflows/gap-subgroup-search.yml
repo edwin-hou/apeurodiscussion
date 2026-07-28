@@ -33,7 +33,7 @@ jobs:
       - name: Search all coprime subgroup actions exactly
         shell: bash
         run: |
-          cat > /tmp/search.g <<'GAP'
+          cat > /tmp/search.g <<GAP
           LoadPackage("smallgrp");
 
           ClassPosition := function(classes, x)
@@ -112,8 +112,8 @@ jobs:
             return false;
           end;
 
-          start := Int(GetEnv("START"));
-          finish := Int(GetEnv("END"));
+          start := $START;
+          finish := $END;
           Print("GAP_VERSION=",GAPInfo.Version," RANGE=",start,"..",finish,"\n");
           for n in [start..finish] do
             if SmallGroupsAvailable(n) then

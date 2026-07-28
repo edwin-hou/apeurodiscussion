@@ -1,0 +1,40 @@
+name: Exact PSL2 subfield-action probe
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GAP
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gap gap-character-tables gap-atlasrep
+      - name: Probe PSL2(243)
+        shell: bash
+        run: |
+          cat > /tmp/probe.g <<'GAP'
+          Print("GAP_VERSION=",GAPInfo.Version,"\n");
+          G:=PSL(2,243);
+          Print("G_SIZE=",Size(G)," DEGREE=",LargestMovedPoint(G)," GENS=",GeneratorsOfGroup(G),"\n");
+          aut:=AutomorphismGroup(G);
+          Print("AUT_SIZE=",Size(aut)," AUT_DESC=",StructureDescription(aut),"\n");
+          P:=SylowSubgroup(aut,5);
+          Print("P5_SIZE=",Size(P)," P5_GENS=",GeneratorsOfGroup(P),"\n");
+          a:=First(Elements(P),x->Order(x)=5);
+          Print("A_ORDER=",Order(a)," IMAGES=",List(GeneratorsOfGroup(G),g->Image(a,g)),"\n");
+          classes:=ConjugacyClasses(G);
+          Print("G_CLASSES=",Length(classes)," CLASS_ORDERS=",List(classes,c->Order(Representative(c))),"\n");
+          irr:=Irr(G);
+          Print("IRR_COUNT=",Length(irr)," DEGREES=",List(irr,chi->chi[1]),"\n");
+          Print("PROBE_COMPLETED\n");
+          QUIT_GAP(0);
+          GAP
+          gap -q -b /tmp/probe.g 2>&1 | tee /tmp/probe.log
+          grep -q '^PROBE_COMPLETED' /tmp/probe.log
+          ! grep -q '^Error,' /tmp/probe.log
